@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Property Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E9EBE8; --card:#F6F7F5; --ink:#16181A; --graphite:#5E656B;
+  --rule:#C6CBC5; --rule-soft:#DADFD8; --survey:#FF2D78;
+  --sans:'Archivo',-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;
+  -webkit-font-smoothing:antialiased;min-height:100vh;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button{font-family:inherit;cursor:pointer}
+input,textarea{font-family:var(--mono);color:var(--ink)}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--survey);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--graphite)}
+.hide{display:none !important}
+
+/* Title block */
+.tb{border-bottom:1px solid var(--rule);background:var(--card)}
+.tb-top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:18px 16px 12px}
+.tb-title{font-size:21px;font-weight:700;letter-spacing:-.02em;text-transform:uppercase;line-height:1;margin-top:5px}
+.tb-stats{display:flex;border-top:1px solid var(--rule-soft)}
+.tb-cell{flex:1;padding:9px 16px;border-right:1px solid var(--rule-soft);min-width:0}
+.tb-cell:last-child{border-right:none}
+.tb-val{font-family:var(--mono);font-size:17px;font-weight:500;margin-top:2px}
+.tb-val.warn{color:var(--survey)}
+#status{text-align:right;min-width:96px}
+#status[data-kind="err"]{color:var(--survey)}
+
+/* Tabs */
+.tabs{display:flex;padding:0 16px;background:var(--card);border-bottom:1px solid var(--rule)}
+.tab{background:none;border:none;padding:11px 0;margin-right:22px;font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:600;color:var(--graphite);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab[data-on="true"]{color:var(--ink);border-bottom-color:var(--survey)}
+.pane{padding:16px;max-width:1180px}
+
+/* Matrix */
+.mx-wrap{overflow-x:auto;border:1px solid var(--rule);background:var(--card);-webkit-overflow-scrolling:touch}
+table.mx{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+.mx th,.mx td{border-bottom:1px solid var(--rule-soft)}
+.mx thead th{position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--rule);
+  vertical-align:bottom;padding:12px 0 8px;font-weight:500}
+.col-prop{position:sticky;left:0;z-index:4;background:var(--card);border-right:1px solid var(--rule);
+  width:212px;min-width:212px;text-align:left;padding-left:12px;padding-right:12px}
+.mx thead .col-prop{z-index:5}
+.col-c{width:46px;min-width:46px;text-align:center}
+.hd-rot{height:196px;display:flex;align-items:flex-end;justify-content:center}
+.hd-name{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;
+  font-size:11.5px;font-weight:500;letter-spacing:.01em;line-height:1}
+.hd-name[data-cls="cost"]{color:var(--survey)}
+.hd-name[data-cls="fixable"]{color:var(--graphite)}
+.hd-w{font-family:var(--mono);font-size:9.5px;color:var(--graphite);margin-top:6px}
+.hd-tick{width:1px;height:7px;background:var(--rule);margin:5px auto 0}
+.row-prop{padding:11px 0;vertical-align:middle}
+.p-rank{font-family:var(--mono);font-size:10px;color:var(--graphite)}
+.p-rank span{margin-left:8px}
+.p-name{font-size:13.5px;font-weight:600;line-height:1.25;margin-top:1px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.p-host{font-family:var(--mono);font-size:10px;color:var(--graphite);text-decoration:none}
+.p-host:hover{color:var(--survey)}
+.ko .p-name{text-decoration:line-through;color:var(--graphite)}
+.ko .p-rank{color:var(--survey)}
+.ko td{opacity:.62}
+.ko .col-prop{opacity:1}
+
+/* dimension line */
+.dim{margin-top:7px;position:relative;height:12px}
+.dim-line{position:absolute;top:5px;left:0;right:0;height:1px;background:var(--rule)}
+.dim-tick{position:absolute;top:1px;width:1px;height:9px;background:var(--rule)}
+.dim-fill{position:absolute;top:4px;left:0;height:3px;background:var(--ink)}
+.dim-dot{position:absolute;top:2px;width:7px;height:7px;border-radius:50%;background:var(--survey);transform:translateX(-3.5px)}
+.dim-num{position:absolute;right:0;top:-3px;font-family:var(--mono);font-size:13px;font-weight:600;
+  background:var(--card);padding-left:5px}
+.dim-num.dash{color:var(--rule);font-weight:400}
+
+/* section dividers */
+.sect td{border-bottom:1px solid var(--rule);background:#E0E3DF;padding:0;height:30px}
+.sect-label{position:sticky;left:12px;display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--graphite);padding-left:12px}
+.sect-label[data-kind="rejected"]{color:var(--survey)}
+.sect-label[data-kind="rejected"]::before{content:"";width:14px;height:1px;background:var(--survey);display:inline-block}
+.sect-count{font-family:var(--mono);font-size:10px;color:var(--graphite);border:1px solid var(--rule);
+  border-radius:2px;padding:1px 5px;letter-spacing:0}
+
+/* cells */
+.cell{width:100%;height:42px;border:none;background:none;font-family:var(--mono);font-size:13px;
+  color:var(--ink);display:flex;align-items:center;justify-content:center}
+.cell[data-empty="true"]{color:var(--rule)}
+.cell:hover{background:#E2E5E1}
+.pip{width:26px;height:26px;border-radius:3px;display:flex;align-items:center;justify-content:center}
+
+/* Weights */
+.w-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--rule-soft)}
+.w-main{flex:1;min-width:0}
+.w-name{font-size:14px;font-weight:500}
+.w-note{font-size:12px;color:var(--graphite);margin-top:3px;line-height:1.4}
+.w-tag{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 5px;
+  border:1px solid var(--rule);border-radius:2px;color:var(--graphite);margin-left:8px;white-space:nowrap}
+.w-tag[data-cls="fixed"]{border-color:var(--ink);color:var(--ink)}
+.w-tag[data-cls="cost"]{border-color:var(--survey);color:var(--survey)}
+.w-num{width:52px;text-align:right;font-family:var(--mono);font-size:15px;border:1px solid var(--rule);
+  background:var(--card);padding:5px 7px;border-radius:2px}
+.slider{width:108px;accent-color:#16181A}
+
+/* Buttons + fields */
+.btn{font-size:12px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;padding:9px 14px;
+  border:1px solid var(--ink);background:none;color:var(--ink);border-radius:2px}
+.btn:hover{background:var(--ink);color:var(--paper)}
+.btn.solid{background:var(--ink);color:var(--paper)}
+.btn.solid:hover{background:var(--survey);border-color:var(--survey)}
+.btn.ghost{border-color:var(--rule);color:var(--graphite)}
+.btn.ghost:hover{background:none;border-color:var(--ink);color:var(--ink)}
+.btn.sm{padding:6px 10px;font-size:11px}
+.field{width:100%;padding:10px 11px;border:1px solid var(--rule);background:var(--card);font-size:13px;border-radius:2px}
+.field::placeholder{color:#A7AEA6}
+.row-gap{display:flex;flex-wrap:wrap;gap:8px}
+.cell[data-derived="true"] .pip{box-shadow:inset 0 -2px 0 rgba(255,45,120,.55)}
+.raw-row{display:flex;align-items:center;gap:10px;margin-top:9px}
+.raw-in{flex:1;font-size:15px}
+.raw-derived{flex:1;padding:10px 11px;border:1px dashed var(--rule);border-radius:2px;
+  font-size:14px;color:var(--graphite);background:transparent}
+.raw-out{flex:0 0 52px;text-align:center;font-size:17px;font-weight:600;padding:9px 0;
+  border:1px solid var(--ink);border-radius:2px}
+.raw-hint{font-size:10.5px;color:var(--graphite);margin-top:6px;letter-spacing:.04em}
+.w-scale{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:7px;
+  font-size:11px;color:var(--graphite)}
+.w-scale input{width:74px;padding:4px 6px;border:1px solid var(--rule);background:var(--card);
+  border-radius:2px;font-size:12px;text-align:right}
+.lnk{background:none;border:none;padding:0;font-family:var(--mono);font-size:10.5px;
+  color:var(--graphite);text-decoration:underline;text-underline-offset:2px}
+.lnk:hover{color:var(--survey)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px}
+.legend span{font-family:var(--mono);font-size:10.5px;color:var(--graphite)}
+.empty{border:1px dashed var(--rule);padding:34px 20px;text-align:center}
+
+/* Drawer */
+.scrim{position:fixed;inset:0;background:rgba(22,24,26,.42);z-index:40}
+.drawer{position:fixed;z-index:41;background:var(--paper);left:0;right:0;bottom:0;top:5%;
+  border-top:2px solid var(--ink);display:flex;flex-direction:column;animation:slideUp .22s ease-out}
+@keyframes slideUp{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.drawer-hd{padding:14px 16px;border-bottom:1px solid var(--rule);background:var(--card)}
+.drawer-body{overflow-y:auto;padding:4px 16px 96px;flex:1}
+.drawer-ft{position:absolute;bottom:0;left:0;right:0;padding:12px 16px;background:var(--card);
+  border-top:1px solid var(--rule);display:flex;gap:10px;justify-content:space-between}
+.d-row{padding:13px 0;border-bottom:1px solid var(--rule-soft)}
+.seg{display:flex;gap:5px;margin-top:9px}
+.seg button{flex:1;padding:9px 0;border:1px solid var(--rule);background:var(--card);
+  font-family:var(--mono);font-size:13px;border-radius:2px;color:var(--graphite)}
+.seg button[data-on="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.seg button.clear{flex:0 0 42px}
+@media (min-width:760px){
+  .drawer{left:auto;width:480px;top:0;border-top:none;border-left:2px solid var(--ink)}
+  @keyframes slideUp{from{transform:translateX(14px);opacity:0}to{transform:none;opacity:1}}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <div class="tb-top">
+    <div>
+      <div class="eyebrow">Weighted decision matrix</div>
+      <div class="tb-title">Property Survey</div>
+    </div>
+    <div class="eyebrow" id="status"></div>
+  </div>
+  <div class="tb-stats">
+    <div class="tb-cell"><div class="eyebrow">Properties</div><div class="tb-val" id="st-props">00</div></div>
+    <div class="tb-cell"><div class="eyebrow">Criteria</div><div class="tb-val" id="st-crit">00</div></div>
+    <div class="tb-cell"><div class="eyebrow">Weight sum</div><div class="tb-val" id="st-weight">0</div></div>
+    <div class="tb-cell"><div class="eyebrow">Leader</div><div class="tb-val" id="st-leader" style="font-size:13px;padding-top:3px">—</div></div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab" data-tab="matrix">Matrix</button>
+  <button class="tab" data-tab="weights">Weights</button>
+  <button class="tab" data-tab="method">Method</button>
+</div>
+
+<div id="pane"></div>
+<div id="drawer-root"></div>
+
+<script>
+/* =====================================================================
+   CONFIG — fill these two in after deploying the Apps Script.
+   Leave ENDPOINT empty to run purely on this device (localStorage).
+   ===================================================================== */
+var CONFIG = {
+  ENDPOINT: '',                          // https://script.google.com/macros/s/AKfy.../exec
+  SECRET:   'CHANGE-ME-to-something-random'
+};
+
+/* ---------------------------------------------------------------- */
+/* Data                                                             */
+/* ---------------------------------------------------------------- */
+
+var DEFAULT_CRITERIA = [
+  {id:'loc',name:'Location & neighborhood trajectory',abbr:'LOC',weight:12,cls:'fixed',note:'Score the direction it is heading, not just where it is today. Hazard and flood exposure now lives here too.'},
+  {id:'pay',name:'Total monthly payment',abbr:'PAY',weight:11,cls:'cost',source:'price',scale:{best:500000,worst:750000,unit:'$',money:true},note:'Scored straight off the asking price you entered for the property.'},
+  {id:'lay',name:'Layout & flow',abbr:'LAY',weight:10,cls:'fixed',note:'Room adjacency, sightlines, ceiling height, wasted circulation. Walls move; bones mostly do not.'},
+  {id:'com',name:'Commute',abbr:'COM',weight:8,cls:'fixed',scale:{best:15,worst:50,unit:'min'},note:'Door to door, at the hour you would actually leave. Time the bad-weather version.'},
+  {id:'noi',name:'Noise & privacy',abbr:'NOI',weight:7,cls:'fixed',note:'Road, rail, flight path, shared walls, neighbor sightlines. Visit once at night before you score it.'},
+  {id:'lgt',name:'Natural light & orientation',abbr:'LGT',weight:6,cls:'fixed',note:'Which way the main rooms face, and what blocks them. The most under-weighted permanent trait.'},
+  {id:'psf',name:'Price per sq ft vs comps',abbr:'PSF',weight:6,cls:'cost',source:'psf',scale:{best:350,worst:800,unit:'$/sq ft',money:false},note:'Calculated for you from asking price divided by square footage. Set the range to your neighborhood comps.'},
+  {id:'sys',name:'Major systems age',abbr:'SYS',weight:6,cls:'fixable',scale:{best:2,worst:20,unit:'yrs'},note:'Age of the oldest major system — roof, HVAC, water heater, panel. Enter the worst one, not the average.'},
+  {id:'sqf',name:'Square footage',abbr:'SQF',weight:5,cls:'fixed',scale:{best:1500,worst:750,unit:'sq ft'},note:'Interior finished space. Also feeds the price per sq ft calculation.'},
+  {id:'out',name:'Outdoor space & lot',abbr:'OUT',weight:5,cls:'fixed',note:'Balcony, terrace, yard, shared roof deck. Score how usable it actually is, not how many square feet it measures.'},
+  {id:'par',name:'Parking',abbr:'PAR',weight:4,cls:'fixed',note:'Score the daily experience, not the space count. Deeded garage spot is a 5; tandem shuffle a 3; permit-only on a street that fills by six is a 1.'},
+  {id:'kit',name:'Kitchen & bathrooms',abbr:'KIT',weight:4,cls:'fixable',note:'Separated from condition because these are the two rooms that cost real money to redo.'},
+  {id:'res',name:'Resale & liquidity',abbr:'RES',weight:4,cls:'fixed',note:'How wide is the next buyer pool? Odd layouts and odd lots sell slowly.'},
+  {id:'sto',name:'Storage',abbr:'STO',weight:4,cls:'fixable',note:'Closets, basement, bike room, deeded storage cage. Matters more the smaller the place gets.'},
+  {id:'con',name:'Condition (cosmetic)',abbr:'CON',weight:3,cls:'fixable',note:'Paint, floors, fixtures. Deliberately low weight — this is the cheapest thing to change.'},
+  {id:'prk',name:'Park proximity',abbr:'PRK',weight:3,cls:'fixed',scale:{best:5,worst:20,unit:'min walk'},note:'Walking minutes to green space you would actually use. Score the walk, not the drive.'},
+  {id:'wlk',name:'Walkability & daily amenities',abbr:'WLK',weight:2,cls:'fixed',scale:{best:80,worst:30,unit:'Walk Score'},note:'Walk Score, or your own read of it. Groceries, coffee, pharmacy — weekly errands, not yearly.'}
+];
+
+var SCALE = [
+  {v:1,label:'Sours the whole place'},
+  {v:2,label:'Below par, would nag'},
+  {v:3,label:'Acceptable'},
+  {v:4,label:'Strong'},
+  {v:5,label:'Best I have seen'}
+];
+
+var CLS_LABEL = {fixed:'Fixed', fixable:'Fixable', cost:'Cost'};
+
+// Bump this whenever DEFAULT_CRITERIA changes shape. Saved data from an older
+// schema gets its criteria rebuilt from the defaults on load — otherwise a
+// browser that ran an earlier build keeps showing the old rubric forever.
+var SCHEMA = 2;
+
+var state = {
+  criteria: DEFAULT_CRITERIA.slice(),
+  properties: [],
+  rev: 0,
+  tab: 'matrix',
+  openId: null,
+  valueMode: false
+};
+
+/* ---------------------------------------------------------------- */
+/* Storage adapter                                                  */
+/* ---------------------------------------------------------------- */
+
+var Store = {
+  mode: CONFIG.ENDPOINT ? 'sheets' : 'local',
+  key: 'propmatrix:v1',
+
+  load: function () {
+    if (this.mode === 'local') {
+      try {
+        var raw = localStorage.getItem(this.key);
+        return Promise.resolve(raw ? JSON.parse(raw) : null);
+      } catch (e) { return Promise.resolve(null); }
+    }
+    var url = CONFIG.ENDPOINT + '?secret=' + encodeURIComponent(CONFIG.SECRET);
+    return fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.error) throw new Error(d.error);
+        return d;
+      });
+  },
+
+  save: function (payload) {
+    if (this.mode === 'local') {
+      try {
+        localStorage.setItem(this.key, JSON.stringify({
+          v: SCHEMA, criteria: payload.criteria, properties: payload.properties
+        }));
+      } catch (e) {}
+      return Promise.resolve({ok: true});
+    }
+    // text/plain keeps this a "simple request" so the browser skips the
+    // CORS preflight, which Apps Script cannot answer.
+    return fetch(CONFIG.ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({
+        secret: CONFIG.SECRET,
+        baseRev: state.rev,
+        criteria: payload.criteria,
+        properties: payload.properties
+      })
+    }).then(function (r) { return r.json(); });
+  }
+};
+
+/* ---------------------------------------------------------------- */
+/* Helpers                                                          */
+/* ---------------------------------------------------------------- */
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+function labelFromUrl(url){
+  if(!url) return 'Untitled property';
+  try{
+    var u = new URL(url.indexOf('http')===0 ? url : 'https://'+url);
+    var segs = u.pathname.split('/').filter(Boolean).reverse();
+    for(var i=0;i<segs.length;i++){
+      if(/[a-zA-Z]{3}/.test(segs[i]) && segs[i].length>4){
+        return decodeURIComponent(segs[i]).replace(/[_-]+/g,' ')
+          .replace(/\.(html?|php|aspx)$/i,'').replace(/\b\d{6,}\b/g,'')
+          .trim().split(' ').slice(0,7).join(' ');
+      }
+    }
+    return u.hostname.replace(/^www\./,'');
+  }catch(e){ return url.slice(0,40); }
+}
+
+function hostFromUrl(url){
+  try{
+    var u = new URL(url.indexOf('http')===0 ? url : 'https://'+url);
+    return u.hostname.replace(/^www\./,'');
+  }catch(e){ return ''; }
+}
+
+function fmtMoney(n){
+  return n ? '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:0}) : '';
+}
+
+// Where a criterion's raw number comes from. Two are derived so you never
+// type the same figure twice: price is the property's asking price, and
+// price-per-sq-ft is that divided by the square footage you entered.
+function rawFor(p,c){
+  if(!c.scale) return null;
+  if(c.source==='price'){ var v = Number(p.price); return v>0 ? v : null; }
+  if(c.source==='psf'){
+    var pr = Number(p.price)||0, sf = Number(p.raw && p.raw['sqf'])||0;
+    return (pr>0 && sf>0) ? pr/sf : null;
+  }
+  var r = p.raw && p.raw[c.id];
+  if(r==null || r==='') return null;
+  var n = Number(r);
+  return isNaN(n) ? null : n;
+}
+
+// Linear between the two anchors, clamped at both ends. Direction is implied
+// by which anchor is larger, so lower-is-better and higher-is-better both
+// work without a flag.
+function scoreFromRaw(raw,scale){
+  if(raw==null || !scale || scale.best===scale.worst) return null;
+  var t = (raw - scale.worst) / (scale.best - scale.worst);
+  t = Math.max(0, Math.min(1, t));
+  return Math.round((1 + 4*t) * 10) / 10;
+}
+
+function scoreFor(p,c){
+  if(c.scale) return scoreFromRaw(rawFor(p,c), c.scale);
+  var s = p.scores && p.scores[c.id];
+  return typeof s === 'number' ? s : null;
+}
+
+function fmtRaw(c,raw){
+  if(raw==null) return '';
+  var n = (c.scale && c.scale.money) ? Math.round(raw).toLocaleString()
+        : (Math.round(raw*10)/10).toLocaleString();
+  return (c.scale && c.scale.money ? '$' : '') + n;
+}
+
+function scaleHint(c){
+  if(!c.scale) return '';
+  return '5 at ' + fmtRaw(c, c.scale.best) + ' \u00b7 1 at ' + fmtRaw(c, c.scale.worst)
+       + (c.scale.unit && !c.scale.money ? ' ' + c.scale.unit : '');
+}
+
+function weighted(p){
+  var num=0, den=0, scored=0;
+  state.criteria.forEach(function(c){
+    var s = scoreFor(p,c);
+    if(typeof s === 'number'){ num += c.weight*s; den += c.weight*5; scored++; }
+  });
+  return {total: den>0 ? (num/den)*100 : null, scored: scored};
+}
+
+function totalWeight(){
+  return state.criteria.reduce(function(a,c){ return a + (Number(c.weight)||0); }, 0);
+}
+
+function computeGroups(){
+  var scored = state.properties.map(function(p){
+    var s = weighted(p);
+    var price = Number(p.price)||0;
+    var perDollar = (s.total!=null && price>0) ? s.total/(price/100000) : null;
+    return Object.assign({}, p, s, {perDollar: perDollar});
+  });
+  var metric = function(x){ return state.valueMode ? x.perDollar : x.total; };
+
+  var rejected = scored.filter(function(p){ return p.knockout; })
+    .sort(function(a,b){ return (metric(b)==null?-1:metric(b)) - (metric(a)==null?-1:metric(a)); });
+  var inPlay = scored.filter(function(p){ return !p.knockout; });
+  var live = inPlay.filter(function(p){ return metric(p)!=null; })
+    .sort(function(a,b){ return metric(b)-metric(a); });
+  live.forEach(function(p,i){ p.rank = i+1; });
+  var pending = inPlay.filter(function(p){ return metric(p)==null; });
+
+  return {live:live, pending:pending, rejected:rejected,
+          flat: live.concat(pending, rejected)};
+}
+
+function getProp(id){
+  for(var i=0;i<state.properties.length;i++) if(state.properties[i].id===id) return state.properties[i];
+  return null;
+}
+
+/* ---------------------------------------------------------------- */
+/* Persistence                                                      */
+/* ---------------------------------------------------------------- */
+
+var saveTimer = null, booting = true;
+
+function setStatus(msg, kind){
+  var el = document.getElementById('status');
+  el.textContent = msg || '';
+  el.setAttribute('data-kind', kind || '');
+}
+
+function scheduleSave(){
+  if(booting) return;
+  clearTimeout(saveTimer);
+  setStatus('Saving…');
+  saveTimer = setTimeout(function(){
+    Store.save({criteria: state.criteria, properties: state.properties})
+      .then(function(res){
+        if(res && res.conflict){
+          state.criteria = res.criteria;
+          state.properties = res.properties;
+          state.rev = res.rev;
+          render();
+          setStatus('Reloaded — someone else saved first', 'err');
+          return;
+        }
+        if(res && res.error) throw new Error(res.error);
+        if(res && typeof res.rev === 'number') state.rev = res.rev;
+        setStatus(Store.mode==='sheets' ? 'Synced' : 'Saved');
+        setTimeout(function(){
+          if(document.getElementById('status').textContent.match(/Synced|Saved/)) setStatus('');
+        }, 1600);
+      })
+      .catch(function(e){
+        setStatus('Not saved — ' + e.message, 'err');
+      });
+  }, 900);
+}
+
+// Rebuild criteria from the current defaults, keeping any weight the user had
+// already tuned. Scores and raw values on properties are left untouched.
+function migrateCriteria(saved){
+  var byId = {};
+  (saved||[]).forEach(function(c){ byId[c.id] = c; });
+  return DEFAULT_CRITERIA.map(function(def){
+    var old = byId[def.id];
+    var next = JSON.parse(JSON.stringify(def));
+    if(old && typeof old.weight === 'number') next.weight = old.weight;
+    return next;
+  });
+}
+
+function boot(){
+  setStatus('Loading…');
+  Store.load()
+    .then(function(d){
+      var migrated = false;
+      if(d){
+        if(d.criteria && d.criteria.length){
+          // A payload with no version, or a criteria list where nothing carries
+          // a scale, predates measured criteria. Rebuild it.
+          var hasScale = d.criteria.some(function(c){ return !!c.scale; });
+          if(d.v !== SCHEMA && !hasScale){
+            state.criteria = migrateCriteria(d.criteria);
+            migrated = true;
+          } else {
+            state.criteria = d.criteria;
+          }
+        }
+        if(d.properties) state.properties = d.properties;
+        if(typeof d.rev === 'number') state.rev = d.rev;
+      }
+      state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
+      booting = false;
+      render();
+      if(migrated){
+        setStatus('Rubric updated to the latest version');
+        scheduleSave();
+        setTimeout(function(){ setStatus(''); }, 3000);
+      } else {
+        setStatus(Store.mode==='sheets' ? 'Connected to sheet' : 'This device only');
+        setTimeout(function(){ setStatus(''); }, 2200);
+      }
+    })
+    .catch(function(e){
+      booting = false;
+      render();
+      setStatus('Sheet unreachable — ' + e.message, 'err');
+    });
+}
+
+/* ---------------------------------------------------------------- */
+/* Render                                                           */
+/* ---------------------------------------------------------------- */
+
+function render(){
+  var g = computeGroups();
+  var tw = totalWeight();
+
+  document.getElementById('st-props').textContent = String(state.properties.length).padStart(2,'0');
+  document.getElementById('st-crit').textContent  = String(state.criteria.length).padStart(2,'0');
+  var wEl = document.getElementById('st-weight');
+  wEl.textContent = tw;
+  wEl.className = 'tb-val' + (tw!==100 ? ' warn' : '');
+  var lead = g.live[0];
+  document.getElementById('st-leader').textContent = lead
+    ? (state.valueMode ? lead.perDollar.toFixed(1) : lead.total.toFixed(1))
+    : '—';
+
+  var tabs = document.querySelectorAll('.tab');
+  for(var i=0;i<tabs.length;i++)
+    tabs[i].setAttribute('data-on', tabs[i].getAttribute('data-tab')===state.tab);
+
+  var pane = document.getElementById('pane');
+  if(state.tab==='matrix')      pane.innerHTML = viewMatrix(g);
+  else if(state.tab==='weights') pane.innerHTML = viewWeights(tw);
+  else                           pane.innerHTML = viewMethod();
+
+  renderDrawer();
+}
+
+function viewMatrix(g){
+  var h = '<div class="pane">';
+
+  h += '<div style="margin-bottom:16px">'
+    + '<div class="eyebrow" style="margin-bottom:8px">Add a property</div>'
+    + '<div class="row-gap">'
+    + '<input class="field" id="new-url"  style="flex:3 1 260px" placeholder="Paste the listing link">'
+    + '<input class="field" id="new-nick" style="flex:1 1 130px" placeholder="Nickname (optional)">'
+    + '<input class="field" id="new-price" style="flex:1 1 110px" inputmode="numeric" placeholder="Asking price">'
+    + '<button class="btn solid" data-act="add">Add</button>'
+    + '</div></div>';
+
+  if(!state.properties.length){
+    h += '<div class="empty"><div class="eyebrow">No properties yet</div>'
+      + '<div style="font-size:14px;color:var(--graphite);margin-top:8px;line-height:1.5">'
+      + 'Paste a listing link above to start a row.<br>'
+      + 'Set your weights before the first showing, then leave them alone.</div></div></div>';
+    return h;
+  }
+
+  var maxMetric = 100;
+  var vals = g.live.map(function(p){ return state.valueMode ? p.perDollar : p.total; })
+                   .filter(function(v){ return v!=null; });
+  if(vals.length) maxMetric = Math.max.apply(null, vals);
+
+  h += '<div class="mx-wrap"><table class="mx"><thead><tr>'
+    + '<th class="col-prop"><div class="eyebrow">'
+    + (state.valueMode ? 'Rank / points per $100k' : 'Rank / weighted score')
+    + '</div></th>';
+  state.criteria.forEach(function(c){
+    h += '<th class="col-c" title="'+esc(c.name)+' — weight '+c.weight+'">'
+      + '<div class="hd-rot"><span class="hd-name" data-cls="'+esc(c.cls)+'">'+esc(c.name)+'</span></div>'
+      + '<div class="hd-w">'+c.weight+'</div><div class="hd-tick"></div></th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  [{key:'live',rows:g.live,label:null},
+   {key:'pending',rows:g.pending,label:'Not yet scored'},
+   {key:'rejected',rows:g.rejected,label:'Rejected'}].forEach(function(sec){
+    if(!sec.rows.length) return;
+    if(sec.label){
+      h += '<tr class="sect"><td colspan="'+(1+state.criteria.length)+'">'
+        + '<span class="sect-label" data-kind="'+sec.key+'">'+sec.label
+        + '<span class="sect-count">'+sec.rows.length+'</span></span></td></tr>';
+    }
+    sec.rows.forEach(function(p){ h += rowHtml(p, maxMetric); });
+  });
+
+  h += '</tbody></table></div>';
+
+  h += '<div class="legend">'
+    + '<span>Judgement cells cycle 3 &rarr; 4 &rarr; 5 &rarr; blank</span>'
+    + '<span>Pink-underlined cells are measured &mdash; tap to enter the number</span>'
+    + '<span>Tap a property name for full scoring</span>'
+    + '<span>Scroll sideways for all '+state.criteria.length+' criteria</span></div>';
+
+  h += '<div class="row-gap" style="margin-top:18px">'
+    + '<button class="btn sm ghost" data-act="valuemode">'
+    + (state.valueMode ? 'Rank by score' : 'Rank by value per $100k') + '</button>'
+    + '<button class="btn sm ghost" data-act="copy">Copy table</button>'
+    + (Store.mode==='sheets' ? '<button class="btn sm ghost" data-act="sync">Reload from sheet</button>' : '')
+    + '<button class="btn sm ghost" data-act="rebuild">Restore default rubric</button>'
+    + '<button class="btn sm ghost" data-act="reset">Reset all</button></div>';
+
+  return h + '</div>';
+}
+
+function rowHtml(p, maxMetric){
+  var metric = state.valueMode ? p.perDollar : p.total;
+  var pct = (metric!=null && maxMetric>0) ? Math.max(2,(metric/maxMetric)*100) : 0;
+  var name = p.nickname || labelFromUrl(p.url);
+
+  var h = '<tr class="'+(p.knockout?'ko':'')+'"><td class="col-prop row-prop">'
+    + '<div class="p-rank">'
+    + (p.knockout ? 'OUT' : (p.rank ? String(p.rank).padStart(2,'0') : '—'))
+    + '<span>'+p.scored+'/'+state.criteria.length+'</span>'
+    + (p.price ? '<span>'+esc(fmtMoney(p.price))+'</span>' : '')
+    + '</div>'
+    + '<div class="p-name" data-act="open" data-p="'+esc(p.id)+'" role="button" tabindex="0">'+esc(name)+'</div>';
+
+  if(p.url){
+    h += '<a class="p-host" href="'+esc(p.url)+'" target="_blank" rel="noreferrer">'
+      + esc(hostFromUrl(p.url) || 'listing') + ' &#8599;</a>';
+  }
+
+  h += '<div class="dim"><div class="dim-line"></div>'
+    + '<div class="dim-tick" style="left:0"></div><div class="dim-tick" style="right:0"></div>';
+  if(metric!=null && !p.knockout){
+    h += '<div class="dim-fill" style="width:calc('+pct+'% - 34px)"></div>'
+      + '<div class="dim-dot" style="left:calc('+pct+'% - 34px)"></div>';
+  }
+  h += '<div class="dim-num'+(metric==null?' dash':'')+'">'
+    + (metric!=null ? metric.toFixed(1) : '—') + '</div></div></td>';
+
+  state.criteria.forEach(function(c){
+    var s = scoreFor(p,c);
+    var raw = c.scale ? rawFor(p,c) : null;
+    var style = (s!=null)
+      ? ' style="background:rgba(22,24,26,'+(0.06+(s-1)*0.055)+');font-weight:'+(s>=4?600:400)+'"'
+      : '';
+    var tip = c.name + ' for ' + name + (raw!=null ? ' — ' + fmtRaw(c,raw) : '');
+    h += '<td class="col-c" style="padding:0">'
+      + '<button class="cell" data-empty="'+(s==null)+'" data-derived="'+(!!c.scale)+'"'
+      + ' data-act="cell" data-p="'+esc(p.id)+'" data-c="'+esc(c.id)+'"'
+      + ' title="'+esc(tip)+'" aria-label="'+esc(tip)+'">'
+      + '<span class="pip"'+style+'>'+(s!=null ? (s%1 ? s.toFixed(1) : s) : '&middot;')+'</span>'
+      + '</button></td>';
+  });
+
+  return h + '</tr>';
+}
+
+function viewWeights(tw){
+  var h = '<div class="pane">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">'
+    + '<div style="max-width:560px"><div class="eyebrow">Set these once, before the first showing</div>'
+    + '<div style="font-size:13px;color:var(--graphite);margin-top:6px;line-height:1.5">'
+    + 'Weights are starting points for an owner-occupier planning to stay seven years or more. '
+    + 'If you find yourself adjusting them after seeing the results, that is the matrix catching '
+    + 'you rationalizing — decide which one you actually trust.</div></div>'
+    + '<div class="row-gap"><button class="btn sm ghost" data-act="normalize">Rescale to 100</button>'
+    + '<button class="btn sm ghost" data-act="addcrit">Add criterion</button></div></div>';
+
+  if(tw!==100){
+    h += '<div class="mono" style="color:var(--survey);font-size:12px;margin:12px 0 4px">'
+      + 'Weights sum to '+tw+'. Scores stay comparable either way, but 100 is easier to read.</div>';
+  }
+
+  h += '<div style="margin-top:12px">';
+  state.criteria.forEach(function(c){
+    h += '<div class="w-row"><div class="w-main">'
+      + '<div style="display:flex;align-items:center;flex-wrap:wrap">'
+      + '<span class="w-name">'+esc(c.name)+'</span>'
+      + '<span class="w-tag" data-cls="'+esc(c.cls)+'">'+(CLS_LABEL[c.cls]||esc(c.cls))+'</span></div>'
+      + (c.note ? '<div class="w-note">'+esc(c.note)+'</div>' : '')
+      + (c.scale
+          ? '<div class="w-scale mono">'
+            + '<span>5 at</span>'
+            + '<input data-act="anchor" data-c="'+esc(c.id)+'" data-k="best" value="'+c.scale.best+'" inputmode="decimal">'
+            + '<span>1 at</span>'
+            + '<input data-act="anchor" data-c="'+esc(c.id)+'" data-k="worst" value="'+c.scale.worst+'" inputmode="decimal">'
+            + '<span>'+esc(c.scale.unit||'')+'</span>'
+            + '<button class="lnk" data-act="unscale" data-c="'+esc(c.id)+'">use 1&ndash;5 instead</button>'
+            + '</div>'
+          : '<div class="w-scale mono"><button class="lnk" data-act="addscale" data-c="'+esc(c.id)+'">give this a number scale</button></div>')
+      + '</div>'
+      + '<input class="slider" type="range" min="0" max="20" step="1" value="'+c.weight+'"'
+      + ' data-act="weight" data-c="'+esc(c.id)+'" aria-label="Weight for '+esc(c.name)+'">'
+      + '<input class="w-num mono" type="number" min="0" max="40" value="'+c.weight+'"'
+      + ' data-act="weight" data-c="'+esc(c.id)+'" aria-label="Weight value for '+esc(c.name)+'">'
+      + '<button class="btn sm ghost" data-act="delcrit" data-c="'+esc(c.id)+'" aria-label="Remove '+esc(c.name)+'">&times;</button>'
+      + '</div>';
+  });
+  h += '</div>';
+
+  h += '<div style="margin-top:20px;font-size:12.5px;color:var(--graphite);line-height:1.6;max-width:620px">'
+    + '<div class="eyebrow" style="margin-bottom:8px">Shifting the defaults</div>'
+    + '<b>Kids or school-age plans:</b> add a schools criterion at 6&ndash;8, taken out of square footage and price per sq ft.<br>'
+    + '<b>Selling within five years:</b> double resale and price per sq ft, halve layout and light.<br>'
+    + '<b>Fully remote:</b> move most of commute into light, layout, and noise.<br>'
+    + '<b>Investment, not living in it:</b> price per sq ft, systems age, and resale should carry over half the weight between them.'
+    + '</div>';
+
+  return h + '</div>';
+}
+
+function viewMethod(){
+  var h = '<div class="pane" style="max-width:640px;font-size:14px;line-height:1.65">'
+    + '<div class="eyebrow">How to use this without fooling yourself</div><ul style="padding-left:18px;margin-top:14px">'
+    + '<li style="margin-bottom:12px"><b>Fixed beats fixable.</b> The tags on the Weights tab are the real structure. '
+    + 'Anything money can fix later is deliberately weighted low. Light, noise, layout, and lot are permanent.</li>'
+    + '<li style="margin-bottom:12px"><b>Use dealbreakers instead of low scores.</b> A weighted average will happily let '
+    + 'a great kitchen outvote a flood zone. Mark the property out on its detail panel rather than giving it a 1.</li>'
+    + '<li style="margin-bottom:12px"><b>Score each place on its own, right after the visit.</b> Not against the other '
+    + 'houses, and not three days later once the good one has become a story you tell.</li>'
+    + '<li style="margin-bottom:12px"><b>Watch the coverage count.</b> The n/'+state.criteria.length+' next to each rank '
+    + 'shows how much you actually know. A property leading on six scored criteria is not leading.</li>'
+    + '<li style="margin-bottom:12px"><b>Price is doing two different jobs.</b> Total payment is affordability; price per '
+    + 'sq ft is whether you are overpaying versus comps. Keeping both is fine as long as you know they move together.</li>'
+    + '<li><b>Consider scoring quality, then dividing by cost.</b> Enter asking prices and use "Rank by value per $100k" '
+    + 'to see the matrix without price inside it.</li></ul>'
+    + '<div class="eyebrow" style="margin-top:22px;margin-bottom:8px">The 1&ndash;5 scale</div>';
+  SCALE.forEach(function(s){
+    h += '<div class="mono" style="font-size:12.5px;color:var(--graphite)">'+s.v+' — '+esc(s.label)+'</div>';
+  });
+  return h + '</div>';
+}
+
+/* ---------------------------------------------------------------- */
+/* Drawer                                                           */
+/* ---------------------------------------------------------------- */
+
+function renderDrawer(){
+  var root = document.getElementById('drawer-root');
+  var p = state.openId ? getProp(state.openId) : null;
+  if(!p){ root.innerHTML = ''; return; }
+
+  var h = '<div class="scrim" data-act="close"></div><div class="drawer" role="dialog" aria-label="Property detail">'
+    + '<div class="drawer-hd"><div class="eyebrow">Property detail</div>'
+    + '<input class="field" id="d-nick" style="margin-top:8px;font-family:var(--sans);font-weight:600"'
+    + ' value="'+esc(p.nickname)+'" placeholder="'+esc(labelFromUrl(p.url))+'">'
+    + '<div class="row-gap" style="margin-top:8px;flex-wrap:nowrap">'
+    + '<input class="field" id="d-url" style="flex:2" placeholder="Listing link" value="'+esc(p.url)+'">'
+    + '<input class="field" id="d-price" style="flex:1" inputmode="numeric" placeholder="Price" value="'+esc(p.price)+'">'
+    + '</div></div><div class="drawer-body">';
+
+  state.criteria.forEach(function(c){
+    var s = scoreFor(p,c);
+    h += '<div class="d-row"><div style="display:flex;justify-content:space-between;gap:10px">'
+      + '<div style="font-size:14px;font-weight:500">'+esc(c.name)+'</div>'
+      + '<div class="mono" style="font-size:11px;color:var(--graphite);white-space:nowrap">w '+c.weight+'</div></div>'
+      + (c.note ? '<div class="w-note">'+esc(c.note)+'</div>' : '');
+
+    if(c.scale){
+      var derived = !!c.source;
+      var raw = rawFor(p,c);
+      h += '<div class="raw-row">'
+        + (derived
+            ? '<div class="raw-derived mono" id="raw-'+esc(c.id)+'">'
+              + (raw!=null ? esc(fmtRaw(c,raw)) : 'needs '+(c.source==='psf'?'price and sq ft':'a price'))
+              + '</div>'
+            : '<input class="field raw-in" id="raw-'+esc(c.id)+'" inputmode="decimal"'
+              + ' data-act="raw" data-c="'+esc(c.id)+'" placeholder="'+esc(c.scale.unit||'value')+'"'
+              + ' value="'+esc(p.raw && p.raw[c.id]!=null ? p.raw[c.id] : '')+'">')
+        + '<div class="raw-out mono" data-out="'+esc(c.id)+'">'+(s!=null ? s.toFixed(1) : '—')+'</div>'
+        + '</div>'
+        + '<div class="raw-hint mono">'+esc(scaleHint(c))
+        + (derived ? ' \u00b7 calculated' : '') + '</div>';
+    } else {
+      var sv = p.scores && p.scores[c.id];
+      h += '<div class="seg">';
+      SCALE.forEach(function(sc){
+        h += '<button data-on="'+(sv===sc.v)+'" title="'+esc(sc.label)+'" data-act="dscore"'
+          + ' data-c="'+esc(c.id)+'" data-v="'+sc.v+'">'+sc.v+'</button>';
+      });
+      h += '<button class="clear" data-act="dscore" data-c="'+esc(c.id)+'" data-v="" title="Clear">&middot;</button></div>';
+    }
+    h += '</div>';
+  });
+
+  h += '<div style="margin-top:16px"><div class="eyebrow" style="margin-bottom:8px">Notes from the visit</div>'
+    + '<textarea class="field" id="d-notes" rows="4" placeholder="What you noticed that no score captures.">'
+    + esc(p.notes||'') + '</textarea></div></div>'
+    + '<div class="drawer-ft">'
+    + '<button class="btn sm ghost" data-act="knock">'+(p.knockout?'Bring back in':'Mark dealbreaker')+'</button>'
+    + '<div class="row-gap"><button class="btn sm ghost" data-act="delprop">Delete</button>'
+    + '<button class="btn sm solid" data-act="close">Done</button></div></div></div>';
+
+  root.innerHTML = h;
+
+  // Text fields mutate state directly and do NOT trigger a re-render, so
+  // typing never loses focus. The matrix catches up when the drawer closes.
+  // Raw numeric inputs update their own derived score in place, without a
+  // full re-render, so the field never loses focus mid-number.
+  var raws = root.querySelectorAll('[data-act="raw"]');
+  for(var ri=0; ri<raws.length; ri++){
+    (function(el){
+      el.addEventListener('input', function(){
+        var prop = getProp(state.openId); if(!prop) return;
+        var cid = el.getAttribute('data-c');
+        prop.raw = prop.raw || {};
+        el.value = el.value.replace(/[^0-9.\-]/g,'');
+        if(el.value==='') delete prop.raw[cid]; else prop.raw[cid] = el.value;
+        refreshDerived();
+        scheduleSave();
+      });
+    })(raws[ri]);
+  }
+
+  ['nick','url','price','notes'].forEach(function(f){
+    var el = document.getElementById('d-'+f);
+    if(!el) return;
+    el.addEventListener('input', function(){
+      var prop = getProp(state.openId);
+      if(!prop) return;
+      if(f==='nick')       prop.nickname = el.value;
+      else if(f==='url')   prop.url = el.value;
+      else if(f==='price'){ el.value = el.value.replace(/[^0-9]/g,''); prop.price = el.value; refreshDerived(); }
+      else                 prop.notes = el.value;
+      scheduleSave();
+    });
+  });
+}
+
+// Repaint every derived readout in the open drawer.
+function refreshDerived(){
+  var p = getProp(state.openId); if(!p) return;
+  state.criteria.forEach(function(c){
+    if(!c.scale) return;
+    var out = document.querySelector('[data-out="'+c.id+'"]');
+    if(out){ var sc = scoreFor(p,c); out.textContent = sc!=null ? sc.toFixed(1) : '—'; }
+    if(c.source){
+      var box = document.getElementById('raw-'+c.id);
+      if(box && box.classList.contains('raw-derived')){
+        var r = rawFor(p,c);
+        box.textContent = r!=null ? fmtRaw(c,r)
+          : 'needs ' + (c.source==='psf' ? 'price and sq ft' : 'a price');
+      }
+    }
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Events                                                           */
+/* ---------------------------------------------------------------- */
+
+document.addEventListener('click', function(ev){
+  var t = ev.target.closest('[data-act], .tab');
+  if(!t) return;
+  var act = t.getAttribute('data-act');
+
+  if(t.classList.contains('tab')){
+    state.tab = t.getAttribute('data-tab');
+    render();
+    return;
+  }
+
+  if(act==='add'){
+    var u = document.getElementById('new-url').value.trim();
+    var n = document.getElementById('new-nick').value.trim();
+    var pr = document.getElementById('new-price').value.replace(/[^0-9]/g,'');
+    if(!u && !n) return;
+    state.properties.push({id:uid(),url:u,nickname:n,price:pr,scores:{},raw:{},knockout:false,notes:''});
+    render(); scheduleSave();
+  }
+
+  else if(act==='cell'){
+    var prop = getProp(t.getAttribute('data-p'));
+    var cid = t.getAttribute('data-c');
+    if(!prop) return;
+    // Quantified criteria have no 1-5 to cycle through — open the panel so
+    // the raw number can be typed instead.
+    if(t.getAttribute('data-derived')==='true'){
+      state.openId = prop.id; renderDrawer();
+      var f = document.getElementById('raw-'+cid);
+      if(f){ f.scrollIntoView({block:'center'}); f.focus(); }
+      return;
+    }
+    var cur = prop.scores[cid];
+    if(cur==null) prop.scores[cid] = 3;
+    else if(cur===5) delete prop.scores[cid];
+    else prop.scores[cid] = cur+1;
+    render(); scheduleSave();
+  }
+
+  else if(act==='open'){ state.openId = t.getAttribute('data-p'); renderDrawer(); }
+  else if(act==='close'){ state.openId = null; render(); }
+
+  else if(act==='dscore'){
+    var pd = getProp(state.openId);
+    if(!pd) return;
+    var cid2 = t.getAttribute('data-c');
+    var v = t.getAttribute('data-v');
+    if(v==='') delete pd.scores[cid2]; else pd.scores[cid2] = Number(v);
+    var seg = t.parentNode.querySelectorAll('button');
+    for(var i=0;i<seg.length;i++){
+      seg[i].setAttribute('data-on', seg[i].getAttribute('data-v')===v && v!=='');
+    }
+    scheduleSave();
+  }
+
+  else if(act==='knock'){
+    var pk = getProp(state.openId);
+    if(pk){ pk.knockout = !pk.knockout; renderDrawer(); render(); scheduleSave(); }
+  }
+
+  else if(act==='delprop'){
+    if(!confirm('Delete this property entirely? Marking it a dealbreaker keeps the record.')) return;
+    state.properties = state.properties.filter(function(x){ return x.id!==state.openId; });
+    state.openId = null; render(); scheduleSave();
+  }
+
+  else if(act==='valuemode'){ state.valueMode = !state.valueMode; render(); }
+  else if(act==='copy') copyTable();
+  else if(act==='sync'){ booting = true; boot(); }
+
+  else if(act==='rebuild'){
+    if(!confirm('Restore the 17 default criteria and their scales? Your properties and scores are kept; edited weights are kept where the criterion still exists.')) return;
+    state.criteria = migrateCriteria(state.criteria);
+    render(); scheduleSave();
+  }
+
+  else if(act==='reset'){
+    if(!confirm('Clear every property and restore the default weights?')) return;
+    state.criteria = DEFAULT_CRITERIA.slice();
+    state.properties = [];
+    render(); scheduleSave();
+  }
+
+  else if(act==='normalize'){
+    var tw = totalWeight();
+    if(!tw) return;
+    state.criteria.forEach(function(c){ c.weight = Math.round((c.weight/tw)*100); });
+    render(); scheduleSave();
+  }
+
+  else if(act==='addscale'){
+    var cid4 = t.getAttribute('data-c'), tgt = null;
+    state.criteria.forEach(function(x){ if(x.id===cid4) tgt = x; });
+    if(!tgt) return;
+    var b = prompt('Value that should score 5 (the good end)');
+    if(b===null || b==='') return;
+    var w2 = prompt('Value that should score 1 (the bad end)');
+    if(w2===null || w2==='') return;
+    var u = prompt('Unit label, e.g. min, sq ft, $/yr') || '';
+    tgt.scale = {best:Number(b), worst:Number(w2), unit:u, money:/^\$/.test(u)};
+    state.properties.forEach(function(pp){ delete pp.scores[cid4]; });
+    render(); scheduleSave();
+  }
+
+  else if(act==='unscale'){
+    var cid5 = t.getAttribute('data-c');
+    state.criteria.forEach(function(x){ if(x.id===cid5){ delete x.scale; delete x.source; } });
+    state.properties.forEach(function(pp){ if(pp.raw) delete pp.raw[cid5]; });
+    render(); scheduleSave();
+  }
+
+  else if(act==='addcrit'){
+    var name = prompt('Name the criterion');
+    if(!name) return;
+    state.criteria.push({id:uid(),name:name.trim(),abbr:name.trim().slice(0,3).toUpperCase(),
+      weight:4,cls:'fixed',note:''});
+    render(); scheduleSave();
+  }
+
+  else if(act==='delcrit'){
+    var cid3 = t.getAttribute('data-c');
+    state.criteria = state.criteria.filter(function(c){ return c.id!==cid3; });
+    state.properties.forEach(function(p){ delete p.scores[cid3]; });
+    render(); scheduleSave();
+  }
+});
+
+document.addEventListener('input', function(ev){
+  var t = ev.target;
+  if(t.getAttribute && t.getAttribute('data-act')==='anchor'){
+    var cid = t.getAttribute('data-c'), k = t.getAttribute('data-k');
+    state.criteria.forEach(function(x){
+      if(x.id===cid && x.scale){
+        var n = Number(t.value);
+        if(!isNaN(n)) x.scale[k] = n;
+      }
+    });
+    scheduleSave();
+    return;
+  }
+  if(t.getAttribute && t.getAttribute('data-act')==='weight'){
+    var c = null, cid = t.getAttribute('data-c');
+    state.criteria.forEach(function(x){ if(x.id===cid) c = x; });
+    if(!c) return;
+    c.weight = Math.max(0, Math.min(40, Number(t.value)||0));
+    // Update siblings and the header without a full re-render, so dragging
+    // the slider stays smooth.
+    var pair = document.querySelectorAll('[data-act="weight"][data-c="'+cid+'"]');
+    for(var i=0;i<pair.length;i++) if(pair[i]!==t) pair[i].value = c.weight;
+    var wEl = document.getElementById('st-weight');
+    var tw = totalWeight();
+    wEl.textContent = tw;
+    wEl.className = 'tb-val' + (tw!==100 ? ' warn' : '');
+    scheduleSave();
+  }
+});
+
+document.addEventListener('keydown', function(ev){
+  if(ev.key==='Escape' && state.openId){ state.openId=null; render(); }
+  if(ev.key==='Enter'){
+    var t = ev.target;
+    if(t.id==='new-url'||t.id==='new-nick'||t.id==='new-price'){
+      document.querySelector('[data-act="add"]').click();
+    }
+    if(t.getAttribute && t.getAttribute('data-act')==='open') t.click();
+  }
+});
+
+function copyTable(){
+  var g = computeGroups();
+  var head = ['Status','Property','URL','Price','Score','Scored']
+    .concat(state.criteria.map(function(c){ return c.abbr + (c.scale && c.scale.unit ? ' ('+c.scale.unit+')' : ''); }));
+  var rows = g.flat.map(function(p){
+    return [
+      p.knockout ? 'REJECTED' : (p.rank ? '#'+p.rank : 'unscored'),
+      p.nickname || labelFromUrl(p.url),
+      p.url || '',
+      p.price ? fmtMoney(p.price) : '',
+      p.total!=null ? p.total.toFixed(1) : '—',
+      p.scored+'/'+state.criteria.length
+    ].concat(state.criteria.map(function(c){
+      if(c.scale){
+        var r = rawFor(p,c);
+        return r==null ? '' : fmtRaw(c,r);
+      }
+      var s = p.scores && p.scores[c.id];
+      return s==null ? '' : s;
+    }));
+  });
+  var md = '| '+head.join(' | ')+' |\n|'+head.map(function(){return '---';}).join('|')+'|\n'
+    + rows.map(function(r){ return '| '+r.join(' | ')+' |'; }).join('\n');
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(md)
+      .then(function(){ setStatus('Table copied'); setTimeout(function(){ setStatus(''); },1600); })
+      .catch(function(){ setStatus('Copy blocked by the browser','err'); });
+  } else {
+    setStatus('Copy needs HTTPS','err');
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
