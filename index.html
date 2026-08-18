@@ -66,7 +66,7 @@ table.mx{border-collapse:separate;border-spacing:0;width:max-content;min-width:1
 .hd-name[data-cls="fixable"]{color:var(--graphite)}
 .hd-w{font-family:var(--mono);font-size:9.5px;color:var(--graphite);margin-top:6px}
 .hd-tick{width:1px;height:7px;background:var(--rule);margin:5px auto 0}
-.row-prop{padding:11px 0;vertical-align:middle}
+.row-prop{padding:11px 7px;vertical-align:middle}
 .p-rank{font-family:var(--mono);font-size:10px;color:var(--graphite)}
 .p-rank span{margin-left:8px}
 .p-name{font-size:13.5px;font-weight:600;line-height:1.25;margin-top:1px;overflow:hidden;
@@ -204,7 +204,7 @@ table.mx{border-collapse:separate;border-spacing:0;width:max-content;min-width:1
    Leave ENDPOINT empty to run purely on this device (localStorage).
    ===================================================================== */
 var CONFIG = {
-  ENDPOINT: 'https://script.google.com/macros/s/AKfycbyFmCSJxMJjDUO_mQHrsCEQWLkmBfKuu9FGpuC7IS-xl86m3eQUS1kNs3_s6h8iJFvP/exec', // https://script.google.com/macros/s/AKfy.../exec
+  ENDPOINT: 'https://script.google.com/macros/s/AKfycbyFmCSJxMJjDUO_mQHrsCEQWLkmBfKuu9FGpuC7IS-xl86m3eQUS1kNs3_s6h8iJFvP/exec',                          // https://script.google.com/macros/s/AKfy.../exec
   SECRET:   '46efa5a4a38394ae80c1619988dcff0a'
 };
 
@@ -428,6 +428,48 @@ function getProp(id){
 /* ---------------------------------------------------------------- */
 
 var saveTimer = null, booting = true;
+var saving = false;          // a POST is currently in flight
+var saveQueued = false;      // edits arrived while that POST was running
+var synced = null;           // snapshot of what the server last confirmed
+
+/** Snapshot lets us tell "the user changed this" from "this is just stale". */
+function takeSnapshot(){
+  var m = {};
+  state.properties.forEach(function(p){ m[p.id] = JSON.stringify(p); });
+  synced = { props: m, criteria: JSON.stringify(state.criteria) };
+}
+
+/**
+ * A real conflict means another device saved first. Local edits still win for
+ * anything this session actually touched — we only accept the server's version
+ * of records we have not modified since our last confirmed sync.
+ */
+function mergeFromServer(serverData){
+  var mine = {};
+  state.properties.forEach(function(p){ mine[p.id] = p; });
+
+  var merged = [], seen = {};
+  (serverData.properties || []).forEach(function(sp){
+    seen[sp.id] = true;
+    var local = mine[sp.id];
+    if(!local){ merged.push(sp); return; }                       // theirs only
+    var wasSynced = synced && synced.props[sp.id];
+    var changedHere = !wasSynced || wasSynced !== JSON.stringify(local);
+    merged.push(changedHere ? local : sp);                       // ours if touched
+  });
+  // Anything of ours the server has never seen is a local addition, not a
+  // deletion by the other device — keep it.
+  state.properties.forEach(function(p){
+    if(!seen[p.id] && (!synced || !synced.props[p.id])) merged.push(p);
+  });
+  state.properties = merged;
+
+  var critChanged = !synced || synced.criteria !== JSON.stringify(state.criteria);
+  if(!critChanged && serverData.criteria && serverData.criteria.length){
+    state.criteria = serverData.criteria;
+  }
+  state.rev = serverData.rev;
+}
 
 function setStatus(msg, kind){
   var el = document.getElementById('status');
@@ -439,28 +481,44 @@ function scheduleSave(){
   if(booting) return;
   clearTimeout(saveTimer);
   setStatus('Saving…');
-  saveTimer = setTimeout(function(){
-    Store.save({criteria: state.criteria, properties: state.properties})
-      .then(function(res){
-        if(res && res.conflict){
-          state.criteria = res.criteria;
-          state.properties = res.properties;
-          state.rev = res.rev;
-          render();
-          setStatus('Reloaded — someone else saved first', 'err');
-          return;
-        }
-        if(res && res.error) throw new Error(res.error);
-        if(res && typeof res.rev === 'number') state.rev = res.rev;
-        setStatus(Store.mode==='sheets' ? 'Synced' : 'Saved');
-        setTimeout(function(){
-          if(document.getElementById('status').textContent.match(/Synced|Saved/)) setStatus('');
-        }, 1600);
-      })
-      .catch(function(e){
-        setStatus('Not saved — ' + e.message, 'err');
-      });
-  }, 900);
+  saveTimer = setTimeout(flushSave, 900);
+}
+
+function flushSave(){
+  // Only ever one request in flight. A concurrent second POST would carry a
+  // baseRev the first has already superseded, and the server would read our
+  // own edits as somebody else's conflict.
+  if(saving){ saveQueued = true; return; }
+  saving = true;
+
+  Store.save({criteria: state.criteria, properties: state.properties})
+    .then(function(res){
+      if(res && res.error) throw new Error(res.error);
+
+      if(res && res.conflict){
+        mergeFromServer(res);
+        render();
+        setStatus('Merged an edit from another device');
+        saveQueued = true;             // push the merged result straight back
+        return;
+      }
+
+      if(res && typeof res.rev === 'number') state.rev = res.rev;
+      takeSnapshot();
+      setStatus(Store.mode==='sheets' ? 'Synced' : 'Saved');
+      setTimeout(function(){
+        var el = document.getElementById('status');
+        if(el && /Synced|Saved|Merged/.test(el.textContent)) setStatus('');
+      }, 1600);
+    })
+    .catch(function(e){
+      // Keep the edits and retry on the next change rather than dropping them.
+      setStatus('Not saved — ' + e.message, 'err');
+    })
+    .then(function(){
+      saving = false;
+      if(saveQueued){ saveQueued = false; setTimeout(flushSave, 150); }
+    });
 }
 
 // Rebuild criteria from the current defaults, keeping any weight the user had
@@ -498,6 +556,7 @@ function boot(){
       }
       state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
       booting = false;
+      takeSnapshot();
       render();
       if(migrated){
         setStatus('Rubric updated to the latest version');
@@ -919,7 +978,13 @@ document.addEventListener('click', function(ev){
 
   else if(act==='valuemode'){ state.valueMode = !state.valueMode; render(); }
   else if(act==='copy') copyTable();
-  else if(act==='sync'){ booting = true; boot(); }
+  else if(act==='sync'){
+    if(saving || saveQueued || saveTimer){
+      if(!confirm('There are unsaved changes. Reload from the sheet anyway and lose them?')) return;
+    }
+    clearTimeout(saveTimer); saveTimer = null; saveQueued = false;
+    booting = true; boot();
+  }
 
   else if(act==='rebuild'){
     if(!confirm('Restore the 17 default criteria and their scales? Your properties and scores are kept; edited weights are kept where the criterion still exists.')) return;
@@ -1050,6 +1115,10 @@ function copyTable(){
     setStatus('Copy needs HTTPS','err');
   }
 }
+
+window.addEventListener('beforeunload', function(e){
+  if(saving || saveQueued || saveTimer){ e.preventDefault(); e.returnValue = ''; }
+});
 
 boot();
 </script>
