@@ -206,8 +206,14 @@ table.mx{border-collapse:separate;border-spacing:0;width:max-content;min-width:1
    Leave ENDPOINT empty to run purely on this device (localStorage).
    ===================================================================== */
 var CONFIG = {
-  ENDPOINT: 'https://script.google.com/macros/s/AKfycbyoSZw-Ip5VWfl66-I9pbjUquBcRoBKMMFEVCWRSCDdFxiTEaM90JDYlmLPVuB1ck00/exec',                          // https://script.google.com/macros/s/AKfy.../exec
-  SECRET:   '46efa5a4a38394ae80c1619988dcff0a'
+  ENDPOINT: 'https://script.google.com/macros/s/AKfycbxGwUeVxGArJII248y0Y2r7CfMF2EktZs30jlTXAYubYjTgiJLUV1T4oadeChvq3B1v/exec',                          // https://script.google.com/macros/s/AKfy.../exec
+  SECRET:   '46efa5a4a38394ae80c1619988dcff0a',
+
+  // Used to convert monthly HOA dues into the purchase price they are
+  // equivalent to, so a condo with dues compares fairly against a house
+  // without. At 6.5% over 30 years, $1/month of dues is worth about $158
+  // of price. Change the rate to whatever you are actually being quoted.
+  MORTGAGE: { rate: 0.065, years: 30 }
 };
 
 /* ---------------------------------------------------------------- */
@@ -216,7 +222,7 @@ var CONFIG = {
 
 var DEFAULT_CRITERIA = [
   {id:'loc',name:'Location & neighborhood trajectory',abbr:'LOC',weight:12,cls:'fixed',note:'Score the direction it is heading, not just where it is today. Hazard and flood exposure now lives here too.'},
-  {id:'pay',name:'Total monthly payment',abbr:'PAY',weight:11,cls:'cost',source:'price',scale:{best:500000,worst:750000,unit:'$',money:true},note:'Scored straight off the asking price you entered for the property.'},
+  {id:'pay',name:'Total monthly payment',abbr:'PAY',weight:11,cls:'cost',source:'price',scale:{best:500000,worst:750000,unit:'$',money:true},note:'Asking price plus the capitalised cost of any HOA dues, so a condo with dues compares fairly against a house without.'},
   {id:'lay',name:'Layout & flow',abbr:'LAY',weight:10,cls:'fixed',note:'Room adjacency, sightlines, ceiling height, wasted circulation. Walls move; bones mostly do not.'},
   {id:'com',name:'Commute',abbr:'COM',weight:8,cls:'fixed',scale:{best:15,worst:50,unit:'min'},note:'Door to door, at the hour you would actually leave. Time the bad-weather version.'},
   {id:'noi',name:'Noise & privacy',abbr:'NOI',weight:7,cls:'fixed',note:'Road, rail, flight path, shared walls, neighbor sightlines. Visit once at night before you score it.'},
@@ -344,10 +350,31 @@ function fmtMoney(n){
 // Where a criterion's raw number comes from. Two are derived so you never
 // type the same figure twice: price is the property's asking price, and
 // price-per-sq-ft is that divided by the square footage you entered.
+// Principal equivalent of $1/month, i.e. how much extra house you could have
+// bought with the money the HOA takes.
+function hoaCapFactor(){
+  var m = CONFIG.MORTGAGE || {};
+  var r = typeof m.rate === 'number' ? m.rate : 0.065;
+  var n = ((typeof m.years === 'number' ? m.years : 30)) * 12;
+  var i = r / 12;
+  if(i <= 0) return n;
+  return 1 / (i / (1 - Math.pow(1 + i, -n)));
+}
+
+/** Asking price plus the capitalised cost of the dues. */
+function effectivePrice(p){
+  var price = Number(p.price) || 0;
+  if(price <= 0) return null;
+  return price + (Number(p.hoa) || 0) * hoaCapFactor();
+}
+
 function rawFor(p,c){
   if(!c.scale) return null;
-  if(c.source==='price'){ var v = Number(p.price); return v>0 ? v : null; }
+  // Payment is scored on effective price so dues are not invisible.
+  if(c.source==='price') return effectivePrice(p);
   if(c.source==='psf'){
+    // List price, not effective — comps are quoted on list price, so mixing in
+    // dues here would compare against the wrong benchmark.
     var pr = Number(p.price)||0, sf = Number(p.raw && p.raw['sqf'])||0;
     return (pr>0 && sf>0) ? pr/sf : null;
   }
@@ -402,8 +429,8 @@ function totalWeight(){
 function computeGroups(){
   var scored = state.properties.map(function(p){
     var s = weighted(p);
-    var price = Number(p.price)||0;
-    var perDollar = (s.total!=null && price>0) ? s.total/(price/100000) : null;
+    var eff = effectivePrice(p);
+    var perDollar = (s.total!=null && eff>0) ? s.total/(eff/100000) : null;
     return Object.assign({}, p, s, {perDollar: perDollar});
   });
   var metric = function(x){ return state.valueMode ? x.perDollar : x.total; };
@@ -572,7 +599,7 @@ function applyData(d){
   }
   if(d.properties) state.properties = d.properties;
   if(typeof d.rev === 'number') state.rev = d.rev;
-  state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
+  state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; if(p.hoa==null) p.hoa=''; });
   return d.migrated;
 }
 
@@ -609,7 +636,7 @@ function boot(){
             var hasScale = d.criteria.some(function(c){ return !!c.scale; });
             if(d.v !== SCHEMA && !hasScale){ state.criteria = migrateCriteria(state.criteria); migrated = true; }
           }
-          state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
+          state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; if(p.hoa==null) p.hoa=''; });
         } else {
           migrated = applyData(d);
         }
@@ -679,6 +706,7 @@ function viewMatrix(g){
     + '<input class="field" id="new-url"  style="flex:3 1 260px" placeholder="Paste the listing link">'
     + '<input class="field" id="new-nick" style="flex:1 1 130px" placeholder="Nickname (optional)">'
     + '<input class="field" id="new-price" style="flex:1 1 110px" inputmode="numeric" placeholder="Asking price">'
+    + '<input class="field" id="new-hoa" style="flex:1 1 100px" inputmode="numeric" placeholder="HOA / mo">'
     + '<button class="btn solid" data-act="add">Add</button>'
     + '</div></div>';
 
@@ -746,7 +774,7 @@ function rowHtml(p, maxMetric){
     + '<div class="p-rank">'
     + (p.knockout ? 'OUT' : (p.rank ? String(p.rank).padStart(2,'0') : '—'))
     + '<span>'+p.scored+'/'+state.criteria.length+'</span>'
-    + (p.price ? '<span>'+esc(fmtMoney(p.price))+'</span>' : '')
+    + (p.price ? '<span>'+esc(fmtMoney(p.price))+(Number(p.hoa)>0 ? ' +'+esc(fmtMoney(p.hoa)) : '')+'</span>' : '')
     + '</div>'
     + '<div class="p-name" data-act="open" data-p="'+esc(p.id)+'" role="button" tabindex="0">'+esc(name)+'</div>';
 
@@ -862,6 +890,14 @@ function viewMethod(){
 /* Drawer                                                           */
 /* ---------------------------------------------------------------- */
 
+function effLine(p){
+  var price = Number(p.price)||0, hoa = Number(p.hoa)||0;
+  if(!price) return 'Enter a price to score payment and price per sq ft';
+  if(!hoa) return 'No HOA \u00b7 effective price ' + fmtMoney(price);
+  return fmtMoney(price) + ' + ' + fmtMoney(hoa) + '/mo dues \u2248 '
+       + fmtMoney(Math.round(effectivePrice(p))) + ' effective';
+}
+
 function renderDrawer(){
   var root = document.getElementById('drawer-root');
   var p = state.openId ? getProp(state.openId) : null;
@@ -874,7 +910,10 @@ function renderDrawer(){
     + '<div class="row-gap" style="margin-top:8px;flex-wrap:nowrap">'
     + '<input class="field" id="d-url" style="flex:2" placeholder="Listing link" value="'+esc(p.url)+'">'
     + '<input class="field" id="d-price" style="flex:1" inputmode="numeric" placeholder="Price" value="'+esc(p.price)+'">'
-    + '</div></div><div class="drawer-body">';
+    + '<input class="field" id="d-hoa" style="flex:1" inputmode="numeric" placeholder="HOA / mo" value="'+esc(p.hoa||'')+'">'
+    + '</div>'
+    + '<div class="raw-hint mono" id="eff-line">'+esc(effLine(p))+'</div>'
+    + '</div><div class="drawer-body">';
 
   state.criteria.forEach(function(c){
     var s = scoreFor(p,c);
@@ -939,7 +978,7 @@ function renderDrawer(){
     })(raws[ri]);
   }
 
-  ['nick','url','price','notes'].forEach(function(f){
+  ['nick','url','price','hoa','notes'].forEach(function(f){
     var el = document.getElementById('d-'+f);
     if(!el) return;
     el.addEventListener('input', function(){
@@ -948,6 +987,7 @@ function renderDrawer(){
       if(f==='nick')       prop.nickname = el.value;
       else if(f==='url')   prop.url = el.value;
       else if(f==='price'){ el.value = el.value.replace(/[^0-9]/g,''); prop.price = el.value; refreshDerived(); }
+      else if(f==='hoa'){ el.value = el.value.replace(/[^0-9]/g,''); prop.hoa = el.value; refreshDerived(); }
       else                 prop.notes = el.value;
       scheduleSave();
     });
@@ -957,6 +997,8 @@ function renderDrawer(){
 // Repaint every derived readout in the open drawer.
 function refreshDerived(){
   var p = getProp(state.openId); if(!p) return;
+  var eff = document.getElementById('eff-line');
+  if(eff) eff.textContent = effLine(p);
   state.criteria.forEach(function(c){
     if(!c.scale) return;
     var out = document.querySelector('[data-out="'+c.id+'"]');
@@ -991,8 +1033,9 @@ document.addEventListener('click', function(ev){
     var u = document.getElementById('new-url').value.trim();
     var n = document.getElementById('new-nick').value.trim();
     var pr = document.getElementById('new-price').value.replace(/[^0-9]/g,'');
+    var ho = document.getElementById('new-hoa').value.replace(/[^0-9]/g,'');
     if(!u && !n) return;
-    state.properties.push({id:uid(),url:u,nickname:n,price:pr,scores:{},raw:{},knockout:false,notes:''});
+    state.properties.push({id:uid(),url:u,nickname:n,price:pr,hoa:ho,scores:{},raw:{},knockout:false,notes:''});
     render(); scheduleSave();
   }
 
@@ -1144,7 +1187,7 @@ document.addEventListener('keydown', function(ev){
   if(ev.key==='Escape' && state.openId){ state.openId=null; render(); }
   if(ev.key==='Enter'){
     var t = ev.target;
-    if(t.id==='new-url'||t.id==='new-nick'||t.id==='new-price'){
+    if(t.id==='new-url'||t.id==='new-nick'||t.id==='new-price'||t.id==='new-hoa'){
       document.querySelector('[data-act="add"]').click();
     }
     if(t.getAttribute && t.getAttribute('data-act')==='open') t.click();
@@ -1153,7 +1196,7 @@ document.addEventListener('keydown', function(ev){
 
 function copyTable(){
   var g = computeGroups();
-  var head = ['Status','Property','URL','Price','Score','Scored']
+  var head = ['Status','Property','URL','Price','HOA/mo','Score','Scored']
     .concat(state.criteria.map(function(c){ return c.abbr + (c.scale && c.scale.unit ? ' ('+c.scale.unit+')' : ''); }));
   var rows = g.flat.map(function(p){
     return [
@@ -1161,6 +1204,7 @@ function copyTable(){
       p.nickname || labelFromUrl(p.url),
       p.url || '',
       p.price ? fmtMoney(p.price) : '',
+      Number(p.hoa)>0 ? fmtMoney(p.hoa) : '',
       p.total!=null ? p.total.toFixed(1) : '—',
       p.scored+'/'+state.criteria.length
     ].concat(state.criteria.map(function(c){
