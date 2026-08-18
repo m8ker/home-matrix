@@ -7,7 +7,9 @@
 <title>Property Survey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"></noscript>
 <style>
 :root{
   --paper:#E9EBE8; --card:#F6F7F5; --ink:#16181A; --graphite:#5E656B;
@@ -204,7 +206,7 @@ table.mx{border-collapse:separate;border-spacing:0;width:max-content;min-width:1
    Leave ENDPOINT empty to run purely on this device (localStorage).
    ===================================================================== */
 var CONFIG = {
-  ENDPOINT: 'https://script.google.com/macros/s/AKfycbyFmCSJxMJjDUO_mQHrsCEQWLkmBfKuu9FGpuC7IS-xl86m3eQUS1kNs3_s6h8iJFvP/exec',                          // https://script.google.com/macros/s/AKfy.../exec
+  ENDPOINT: 'https://script.google.com/macros/s/AKfycbyoSZw-Ip5VWfl66-I9pbjUquBcRoBKMMFEVCWRSCDdFxiTEaM90JDYlmLPVuB1ck00/exec',                          // https://script.google.com/macros/s/AKfy.../exec
   SECRET:   '46efa5a4a38394ae80c1619988dcff0a'
 };
 
@@ -427,6 +429,27 @@ function getProp(id){
 /* Persistence                                                      */
 /* ---------------------------------------------------------------- */
 
+var CACHE_KEY = 'propmatrix:cache';
+var loadPending = false;     // first sheet read has not landed yet
+var cacheShown  = false;     // we painted from cache and must reconcile later
+
+function readCache(){
+  try {
+    var raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+
+function writeCache(){
+  if(Store.mode !== 'sheets') return;
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      v: SCHEMA, rev: state.rev, criteria: state.criteria,
+      properties: state.properties, at: Date.now()
+    }));
+  } catch(e){}
+}
+
 var saveTimer = null, booting = true;
 var saving = false;          // a POST is currently in flight
 var saveQueued = false;      // edits arrived while that POST was running
@@ -488,7 +511,7 @@ function flushSave(){
   // Only ever one request in flight. A concurrent second POST would carry a
   // baseRev the first has already superseded, and the server would read our
   // own edits as somebody else's conflict.
-  if(saving){ saveQueued = true; return; }
+  if(saving || loadPending){ saveQueued = true; return; }
   saving = true;
 
   Store.save({criteria: state.criteria, properties: state.properties})
@@ -505,6 +528,7 @@ function flushSave(){
 
       if(res && typeof res.rev === 'number') state.rev = res.rev;
       takeSnapshot();
+      writeCache();
       setStatus(Store.mode==='sheets' ? 'Synced' : 'Saved');
       setTimeout(function(){
         var el = document.getElementById('status');
@@ -534,43 +558,85 @@ function migrateCriteria(saved){
   });
 }
 
+function applyData(d){
+  if(d.criteria && d.criteria.length){
+    // A payload with no version, or a criteria list where nothing carries a
+    // scale, predates measured criteria. Rebuild it.
+    var hasScale = d.criteria.some(function(c){ return !!c.scale; });
+    if(d.v !== SCHEMA && !hasScale){
+      state.criteria = migrateCriteria(d.criteria);
+      d.migrated = true;
+    } else {
+      state.criteria = d.criteria;
+    }
+  }
+  if(d.properties) state.properties = d.properties;
+  if(typeof d.rev === 'number') state.rev = d.rev;
+  state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
+  return d.migrated;
+}
+
 function boot(){
-  setStatus('Loading…');
+  var t0 = Date.now();
+  var cached = readCache();
+
+  // Apps Script needs a few seconds to answer. Rather than stare at a blank
+  // page, paint the last synced copy immediately and reconcile when the real
+  // data lands. Anything edited in the meantime survives via mergeFromServer.
+  if(cached && Store.mode === 'sheets'){
+    applyData(cached);
+    cacheShown = true;
+    booting = false;
+    takeSnapshot();
+    render();
+    var age = Math.round((Date.now() - (cached.at||Date.now()))/60000);
+    setStatus(age < 1 ? 'Checking sheet…' : 'Last synced ' + age + 'm ago · checking…');
+  } else {
+    setStatus('Loading…');
+  }
+
+  loadPending = true;
   Store.load()
     .then(function(d){
+      loadPending = false;
       var migrated = false;
       if(d){
-        if(d.criteria && d.criteria.length){
-          // A payload with no version, or a criteria list where nothing carries
-          // a scale, predates measured criteria. Rebuild it.
-          var hasScale = d.criteria.some(function(c){ return !!c.scale; });
-          if(d.v !== SCHEMA && !hasScale){
-            state.criteria = migrateCriteria(d.criteria);
-            migrated = true;
-          } else {
-            state.criteria = d.criteria;
+        if(cacheShown){
+          // Local edits made while we waited take precedence; everything else
+          // takes the sheet's version.
+          mergeFromServer({rev: d.rev, criteria: d.criteria, properties: d.properties});
+          if(d.criteria && d.criteria.length){
+            var hasScale = d.criteria.some(function(c){ return !!c.scale; });
+            if(d.v !== SCHEMA && !hasScale){ state.criteria = migrateCriteria(state.criteria); migrated = true; }
           }
+          state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
+        } else {
+          migrated = applyData(d);
         }
-        if(d.properties) state.properties = d.properties;
-        if(typeof d.rev === 'number') state.rev = d.rev;
       }
-      state.properties.forEach(function(p){ p.raw = p.raw || {}; p.scores = p.scores || {}; });
       booting = false;
-      takeSnapshot();
+      if(!cacheShown) takeSnapshot();
+      writeCache();
       render();
+
+      var ms = Date.now() - t0;
+      console.log('sheet load: ' + ms + 'ms');
       if(migrated){
         setStatus('Rubric updated to the latest version');
         scheduleSave();
         setTimeout(function(){ setStatus(''); }, 3000);
       } else {
-        setStatus(Store.mode==='sheets' ? 'Connected to sheet' : 'This device only');
-        setTimeout(function(){ setStatus(''); }, 2200);
+        setStatus(Store.mode==='sheets' ? 'Synced (' + (ms/1000).toFixed(1) + 's)' : 'This device only');
+        setTimeout(function(){ setStatus(''); }, 2000);
       }
+      // Anything typed during the wait was held back; send it now.
+      if(saveQueued){ saveQueued = false; flushSave(); }
     })
     .catch(function(e){
+      loadPending = false;
       booting = false;
       render();
-      setStatus('Sheet unreachable — ' + e.message, 'err');
+      setStatus(cacheShown ? 'Offline — showing last synced copy' : 'Sheet unreachable — ' + e.message, 'err');
     });
 }
 
@@ -996,6 +1062,7 @@ document.addEventListener('click', function(ev){
     if(!confirm('Clear every property and restore the default weights?')) return;
     state.criteria = DEFAULT_CRITERIA.slice();
     state.properties = [];
+    try { localStorage.removeItem(CACHE_KEY); } catch(e){}
     render(); scheduleSave();
   }
 
